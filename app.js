@@ -1,6 +1,6 @@
 // ==========================================
 // AI TRADER - STAGE 2
-// REAL MARKET DATA READY
+// REAL EUR/USD MARKET DATA
 // ==========================================
 
 
@@ -8,24 +8,16 @@
 // CONFIGURATION
 // ==========================================
 
-// IMPORTANT:
+// Replace this with YOUR Render URL.
 //
-// Do NOT put a private market-data API key here.
-//
-// Later we will create a backend such as:
-//
-// https://your-backend.example.com/api/market
-//
-// That backend will safely contact the
-// market-data provider.
-//
-// For now this URL is intentionally empty.
+// Example:
+// https://ai-trader-backend-xxxx.onrender.com/api/market
 
 const MARKET_API_URL =
     "https://YOUR-RENDER-URL.onrender.com/api/market";
 
 
-// How often the website asks for new data.
+// Refresh every 15 seconds.
 
 const MARKET_REFRESH_MS = 15000;
 
@@ -62,18 +54,16 @@ const state = {
 
 
 // ==========================================
-// HELPER
+// SHORT DOM FUNCTION
 // ==========================================
 
 function $(id) {
-
     return document.getElementById(id);
-
 }
 
 
 // ==========================================
-// PRICE FORMAT
+// FORMAT PRICE
 // ==========================================
 
 function formatPrice(value) {
@@ -81,9 +71,8 @@ function formatPrice(value) {
     if (
         value === null ||
         value === undefined ||
-        Number.isNaN(Number(value))
+        !Number.isFinite(Number(value))
     ) {
-
         return "--";
     }
 
@@ -92,13 +81,10 @@ function formatPrice(value) {
 
 
 // ==========================================
-// CONNECTION STATUS
+// MARKET CONNECTION STATUS
 // ==========================================
 
-function setMarketStatus(
-    online,
-    message
-) {
+function setMarketStatus(online, message) {
 
     state.marketOnline = online;
 
@@ -153,12 +139,11 @@ function setMarketStatus(
         dataMessage.textContent =
             message;
     }
-
 }
 
 
 // ==========================================
-// DISPLAY MARKET DATA
+// UPDATE MARKET DISPLAY
 // ==========================================
 
 function updateMarketDisplay() {
@@ -200,62 +185,62 @@ function updateMarketDisplay() {
     }
 
 
-    if (state.price !== null) {
+    if (
+        state.price !== null &&
+        state.previousPrice !== null
+    ) {
 
-        if (
-            state.previousPrice !== null
-        ) {
-
-            const change =
+        const change =
+            (
                 (
-                    (
-                        state.price -
-                        state.previousPrice
-                    ) /
+                    state.price -
                     state.previousPrice
-                ) * 100;
+                ) /
+                state.previousPrice
+            ) * 100;
 
 
-            if (priceChange) {
+        if (priceChange) {
 
-                priceChange.textContent =
-                    (
-                        change >= 0
-                            ? "+"
-                            : ""
-                    ) +
-                    change.toFixed(3) +
-                    "%";
-            }
-
-        }
-
-
-        if (lastUpdate) {
-
-            lastUpdate.textContent =
-                new Date()
-                    .toLocaleTimeString();
+            priceChange.textContent =
+                (
+                    change >= 0
+                        ? "+"
+                        : ""
+                ) +
+                change.toFixed(3) +
+                "%";
         }
     }
 
+
+    if (
+        state.price !== null &&
+        lastUpdate
+    ) {
+
+        lastUpdate.textContent =
+            new Date().toLocaleTimeString();
+    }
 }
 
 
 // ==========================================
-// GET MARKET DATA
+// FETCH REAL MARKET DATA
 // ==========================================
 
 async function fetchMarketData() {
 
-    // No backend configured yet.
-
-    if (!MARKET_API_URL) {
+    if (
+        !MARKET_API_URL ||
+        MARKET_API_URL.includes(
+            "YOUR-RENDER-URL"
+        )
+    ) {
 
         setMarketStatus(
             false,
-            "Backend not configured yet. " +
-            "The next step is connecting a secure market-data backend."
+            "Render backend URL has not been configured."
         );
 
         return;
@@ -283,7 +268,7 @@ async function fetchMarketData() {
         if (!response.ok) {
 
             throw new Error(
-                "HTTP " +
+                "Backend returned HTTP " +
                 response.status
             );
         }
@@ -293,73 +278,58 @@ async function fetchMarketData() {
             await response.json();
 
 
-        /*
-         Expected backend response:
-
-         {
-             "symbol": "EUR/USD",
-             "price": 1.10025,
-             "bid": 1.10024,
-             "ask": 1.10026
-         }
-        */
-
-
         if (
-            typeof data.price !==
-            "number"
+            !data.success ||
+            typeof data.price !== "number"
         ) {
 
             throw new Error(
-                "Invalid price returned by backend."
+                data.error ||
+                "Invalid market data."
             );
         }
 
 
+        // Remember previous price.
+
         state.previousPrice =
             state.price;
+
+
+        // Save current price.
 
         state.price =
             Number(data.price);
 
 
+        // Some versions of the backend
+        // may not return bid/ask.
+
         state.bid =
-            data.bid !== undefined
-                ? Number(data.bid)
+            typeof data.bid === "number"
+                ? data.bid
                 : state.price;
 
 
         state.ask =
-            data.ask !== undefined
-                ? Number(data.ask)
+            typeof data.ask === "number"
+                ? data.ask
                 : state.price;
 
 
         setMarketStatus(
             true,
-            "Live EUR/USD market data connected."
+            "Live EUR/USD data connected through Render."
         );
 
 
         updateMarketDisplay();
 
 
-        addLog(
-            "MARKET",
-            "DATA UPDATED",
-            "EUR/USD price: " +
-            formatPrice(state.price)
-        );
-
-
-        // Update an existing demo position.
-
         updateTradePL();
 
-    }
 
-
-    catch (error) {
+    } catch (error) {
 
         console.error(
             "Market data error:",
@@ -369,16 +339,14 @@ async function fetchMarketData() {
 
         setMarketStatus(
             false,
-            "Unable to reach the market-data backend."
+            "Could not connect to the Render market-data backend."
         );
-
     }
-
 }
 
 
 // ==========================================
-// TRADE P/L
+// CALCULATE DEMO TRADE P/L
 // ==========================================
 
 function calculateTradePL() {
@@ -409,7 +377,6 @@ function calculateTradePL() {
         100000 *
         state.trade.lot
     );
-
 }
 
 
@@ -451,7 +418,6 @@ function updateTradePL() {
 
 
     updateAccountDisplay();
-
 }
 
 
@@ -480,8 +446,15 @@ function updateAccountDisplay() {
     if ($("dailyPL")) {
 
         $("dailyPL").textContent =
+            (
+                state.dailyPL >= 0
+                    ? ""
+                    : "-"
+            ) +
             "$" +
-            state.dailyPL.toFixed(2);
+            Math.abs(
+                state.dailyPL
+            ).toFixed(2);
     }
 
 
@@ -492,12 +465,11 @@ function updateAccountDisplay() {
                 ? "1"
                 : "0";
     }
-
 }
 
 
 // ==========================================
-// AI DISPLAY
+// AI STATUS DISPLAY
 // ==========================================
 
 function updateAIStatus() {
@@ -545,12 +517,11 @@ function updateAIStatus() {
         stopBtn.disabled =
             !state.running;
     }
-
 }
 
 
 // ==========================================
-// ADD LOG
+// ACTIVITY LOG
 // ==========================================
 
 function addLog(
@@ -582,43 +553,34 @@ function addLog(
 
 
     const item =
-        document.createElement(
-            "div"
-        );
+        document.createElement("div");
 
 
     item.className =
         "log";
 
 
+    const time =
+        new Date()
+            .toLocaleTimeString();
+
+
     item.innerHTML = `
-
         <div class="log-time">
-
-            ${new Date()
-                .toLocaleTimeString()}
-
+            ${time}
         </div>
-
 
         <div class="log-action">
-
             ${source} • ${action}
-
         </div>
-
 
         <div class="log-reason">
-
             ${reason}
-
         </div>
-
     `;
 
 
     logs.prepend(item);
-
 }
 
 
@@ -641,30 +603,32 @@ function startAI() {
     if ($("reason")) {
 
         $("reason").textContent =
-            "AI is running. " +
-            "Waiting for market data.";
+            "AI is running and monitoring EUR/USD market data.";
     }
 
 
     addLog(
         "SYSTEM",
         "AI STARTED",
-        "AI monitoring started."
+        "Market monitoring started."
     );
 
 
     updateAIStatus();
 
 
+    // Get data immediately.
+
     fetchMarketData();
 
+
+    // Continue refreshing.
 
     state.timer =
         setInterval(
             fetchMarketData,
             MARKET_REFRESH_MS
         );
-
 }
 
 
@@ -699,17 +663,16 @@ function stopAI() {
     addLog(
         "SYSTEM",
         "AI STOPPED",
-        "AI monitoring stopped."
+        "Market monitoring stopped."
     );
 
 
     updateAIStatus();
-
 }
 
 
 // ==========================================
-// OPEN DEMO TRADE
+// DEMO BUY / SELL
 // ==========================================
 
 function openDemoTrade(type) {
@@ -730,6 +693,12 @@ function openDemoTrade(type) {
 
 
     if (state.trade) {
+
+        addLog(
+            "AI",
+            "NO TRADE",
+            "A demo trade is already open."
+        );
 
         return;
     }
@@ -757,14 +726,15 @@ function openDemoTrade(type) {
         entry: state.price,
 
         lot: lot
-
     };
 
 
     addLog(
         "AI",
         type,
-        "Demo position opened at " +
+        "Demo " +
+        type +
+        " opened at " +
         formatPrice(
             state.price
         )
@@ -772,7 +742,6 @@ function openDemoTrade(type) {
 
 
     updateTradeDisplay();
-
 }
 
 
@@ -780,9 +749,7 @@ function openDemoTrade(type) {
 // CLOSE DEMO TRADE
 // ==========================================
 
-function closeDemoTrade(
-    reason
-) {
+function closeDemoTrade(reason) {
 
     if (!state.trade) {
 
@@ -842,7 +809,6 @@ function closeDemoTrade(
     updateTradeDisplay();
 
     updateAccountDisplay();
-
 }
 
 
@@ -867,20 +833,29 @@ function updateTradeDisplay() {
 
     if (!state.trade) {
 
-        if (noTrade)
+        if (noTrade) {
+
             noTrade.classList.remove(
                 "hidden"
             );
+        }
 
-        if (details)
+
+        if (details) {
+
             details.classList.add(
                 "hidden"
             );
+        }
 
-        if (closeButton)
+
+        if (closeButton) {
+
             closeButton.classList.add(
                 "hidden"
             );
+        }
+
 
         if (status) {
 
@@ -891,55 +866,73 @@ function updateTradeDisplay() {
                 "badge neutral";
         }
 
+
         return;
     }
 
 
-    if (noTrade)
+    if (noTrade) {
+
         noTrade.classList.add(
             "hidden"
         );
+    }
 
 
-    if (details)
+    if (details) {
+
         details.classList.remove(
             "hidden"
         );
+    }
 
 
-    if (closeButton)
+    if (closeButton) {
+
         closeButton.classList.remove(
             "hidden"
         );
+    }
 
 
-    if ($("tradeType"))
+    if ($("tradeType")) {
+
         $("tradeType").textContent =
             state.trade.type;
+    }
 
 
-    if ($("entryPrice"))
+    if ($("entryPrice")) {
+
         $("entryPrice").textContent =
             formatPrice(
                 state.trade.entry
             );
+    }
 
 
-    if ($("lotSize"))
+    if ($("lotSize")) {
+
         $("lotSize").textContent =
             state.trade.lot.toFixed(2);
+    }
 
 
-    if ($("tradePL"))
+    if ($("tradePL")) {
+
+        const pl =
+            calculateTradePL();
+
+
         $("tradePL").textContent =
             (
-                calculateTradePL() >= 0
+                pl >= 0
                     ? "+"
                     : ""
             ) +
             "$" +
-            calculateTradePL()
-                .toFixed(2);
+            pl.toFixed(2);
+    }
 
 
     if (status) {
@@ -949,15 +942,13 @@ function updateTradeDisplay() {
 
         status.className =
             "badge " +
-            state.trade.type
-                .toLowerCase();
+            state.trade.type.toLowerCase();
     }
-
 }
 
 
 // ==========================================
-// INITIALIZE
+// PAGE INITIALIZATION
 // ==========================================
 
 document.addEventListener(
@@ -967,22 +958,20 @@ document.addEventListener(
         const startBtn =
             $("startBtn");
 
-
         const stopBtn =
             $("stopBtn");
-
 
         const closeTradeBtn =
             $("closeTradeBtn");
 
-
         const refreshBtn =
             $("refreshMarketBtn");
-
 
         const clearLog =
             $("clearLog");
 
+
+        // START
 
         if (startBtn) {
 
@@ -993,6 +982,8 @@ document.addEventListener(
         }
 
 
+        // STOP
+
         if (stopBtn) {
 
             stopBtn.addEventListener(
@@ -1001,6 +992,8 @@ document.addEventListener(
             );
         }
 
+
+        // CLOSE DEMO TRADE
 
         if (closeTradeBtn) {
 
@@ -1017,6 +1010,8 @@ document.addEventListener(
         }
 
 
+        // MANUAL MARKET REFRESH
+
         if (refreshBtn) {
 
             refreshBtn.addEventListener(
@@ -1025,6 +1020,8 @@ document.addEventListener(
             );
         }
 
+
+        // CLEAR LOG
 
         if (clearLog) {
 
@@ -1039,13 +1036,9 @@ document.addEventListener(
                     if (logs) {
 
                         logs.innerHTML = `
-
                             <div class="log empty-log">
-
                                 No decisions yet.
-
                             </div>
-
                         `;
                     }
 
@@ -1065,7 +1058,7 @@ document.addEventListener(
 
         setMarketStatus(
             false,
-            "Backend not configured yet."
+            "Press START AI to connect to the market."
         );
 
     }
