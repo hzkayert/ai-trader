@@ -21,7 +21,8 @@
 //
 // For now this URL is intentionally empty.
 
-const MARKET_API_URL = "";
+const MARKET_API_URL =
+    "https://YOUR-RENDER-URL.onrender.com/api/market";
 
 
 // How often the website asks for new data.
