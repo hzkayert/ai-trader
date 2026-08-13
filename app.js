@@ -1,53 +1,406 @@
-// ================================
-// AI TRADER - DEMO VERSION
-// ================================
+// ==========================================
+// AI TRADER - STAGE 2
+// REAL MARKET DATA READY
+// ==========================================
+
+
+// ==========================================
+// CONFIGURATION
+// ==========================================
+
+// IMPORTANT:
+//
+// Do NOT put a private market-data API key here.
+//
+// Later we will create a backend such as:
+//
+// https://your-backend.example.com/api/market
+//
+// That backend will safely contact the
+// market-data provider.
+//
+// For now this URL is intentionally empty.
+
+const MARKET_API_URL = "";
+
+
+// How often the website asks for new data.
+
+const MARKET_REFRESH_MS = 15000;
+
+
+// ==========================================
+// STATE
+// ==========================================
 
 const state = {
+
     running: false,
-    price: 1.10000,
+
+    price: null,
+
+    bid: null,
+
+    ask: null,
+
+    previousPrice: null,
+
     balance: 10000,
+
     equity: 10000,
+
     dailyPL: 0,
+
     trade: null,
+
+    marketOnline: false,
+
     timer: null
+
 };
 
 
-// ================================
+// ==========================================
 // HELPER
-// ================================
+// ==========================================
 
 function $(id) {
+
     return document.getElementById(id);
+
 }
 
 
-// ================================
-// FORMAT PRICE
-// ================================
+// ==========================================
+// PRICE FORMAT
+// ==========================================
 
 function formatPrice(value) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        Number.isNaN(Number(value))
+    ) {
+
+        return "--";
+    }
+
     return Number(value).toFixed(5);
 }
 
 
-// ================================
-// CALCULATE TRADE PROFIT
-// ================================
+// ==========================================
+// CONNECTION STATUS
+// ==========================================
+
+function setMarketStatus(
+    online,
+    message
+) {
+
+    state.marketOnline = online;
+
+
+    const dot =
+        $("connectionDot");
+
+    const text =
+        $("connectionText");
+
+    const badge =
+        $("dataBadge");
+
+    const dataMessage =
+        $("dataMessage");
+
+
+    if (dot) {
+
+        dot.className =
+            online
+                ? "dot online"
+                : "dot offline";
+    }
+
+
+    if (text) {
+
+        text.textContent =
+            online
+                ? "Market Online"
+                : "Market Offline";
+    }
+
+
+    if (badge) {
+
+        badge.textContent =
+            online
+                ? "ONLINE"
+                : "OFFLINE";
+
+        badge.className =
+            online
+                ? "badge online"
+                : "badge neutral";
+    }
+
+
+    if (dataMessage) {
+
+        dataMessage.textContent =
+            message;
+    }
+
+}
+
+
+// ==========================================
+// DISPLAY MARKET DATA
+// ==========================================
+
+function updateMarketDisplay() {
+
+    const price =
+        $("price");
+
+    const priceChange =
+        $("priceChange");
+
+    const bid =
+        $("bid");
+
+    const ask =
+        $("ask");
+
+    const lastUpdate =
+        $("lastUpdate");
+
+
+    if (price) {
+
+        price.textContent =
+            formatPrice(state.price);
+    }
+
+
+    if (bid) {
+
+        bid.textContent =
+            formatPrice(state.bid);
+    }
+
+
+    if (ask) {
+
+        ask.textContent =
+            formatPrice(state.ask);
+    }
+
+
+    if (state.price !== null) {
+
+        if (
+            state.previousPrice !== null
+        ) {
+
+            const change =
+                (
+                    (
+                        state.price -
+                        state.previousPrice
+                    ) /
+                    state.previousPrice
+                ) * 100;
+
+
+            if (priceChange) {
+
+                priceChange.textContent =
+                    (
+                        change >= 0
+                            ? "+"
+                            : ""
+                    ) +
+                    change.toFixed(3) +
+                    "%";
+            }
+
+        }
+
+
+        if (lastUpdate) {
+
+            lastUpdate.textContent =
+                new Date()
+                    .toLocaleTimeString();
+        }
+    }
+
+}
+
+
+// ==========================================
+// GET MARKET DATA
+// ==========================================
+
+async function fetchMarketData() {
+
+    // No backend configured yet.
+
+    if (!MARKET_API_URL) {
+
+        setMarketStatus(
+            false,
+            "Backend not configured yet. " +
+            "The next step is connecting a secure market-data backend."
+        );
+
+        return;
+    }
+
+
+    try {
+
+        const response =
+            await fetch(
+                MARKET_API_URL,
+                {
+                    method: "GET",
+
+                    headers: {
+                        "Accept":
+                            "application/json"
+                    },
+
+                    cache: "no-store"
+                }
+            );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "HTTP " +
+                response.status
+            );
+        }
+
+
+        const data =
+            await response.json();
+
+
+        /*
+         Expected backend response:
+
+         {
+             "symbol": "EUR/USD",
+             "price": 1.10025,
+             "bid": 1.10024,
+             "ask": 1.10026
+         }
+        */
+
+
+        if (
+            typeof data.price !==
+            "number"
+        ) {
+
+            throw new Error(
+                "Invalid price returned by backend."
+            );
+        }
+
+
+        state.previousPrice =
+            state.price;
+
+        state.price =
+            Number(data.price);
+
+
+        state.bid =
+            data.bid !== undefined
+                ? Number(data.bid)
+                : state.price;
+
+
+        state.ask =
+            data.ask !== undefined
+                ? Number(data.ask)
+                : state.price;
+
+
+        setMarketStatus(
+            true,
+            "Live EUR/USD market data connected."
+        );
+
+
+        updateMarketDisplay();
+
+
+        addLog(
+            "MARKET",
+            "DATA UPDATED",
+            "EUR/USD price: " +
+            formatPrice(state.price)
+        );
+
+
+        // Update an existing demo position.
+
+        updateTradePL();
+
+    }
+
+
+    catch (error) {
+
+        console.error(
+            "Market data error:",
+            error
+        );
+
+
+        setMarketStatus(
+            false,
+            "Unable to reach the market-data backend."
+        );
+
+    }
+
+}
+
+
+// ==========================================
+// TRADE P/L
+// ==========================================
 
 function calculateTradePL() {
 
-    if (!state.trade) {
+    if (
+        !state.trade ||
+        state.price === null
+    ) {
+
         return 0;
     }
 
+
     const difference =
-        state.price - state.trade.entry;
+        state.price -
+        state.trade.entry;
+
 
     const direction =
         state.trade.type === "BUY"
             ? 1
             : -1;
+
 
     return (
         difference *
@@ -55,248 +408,274 @@ function calculateTradePL() {
         100000 *
         state.trade.lot
     );
+
 }
 
 
-// ================================
-// UPDATE WEBSITE
-// ================================
+// ==========================================
+// UPDATE TRADE P/L
+// ==========================================
 
-function updateDisplay() {
+function updateTradePL() {
 
-    const price = $("price");
-    const balance = $("balance");
-    const equity = $("equity");
-    const dailyPL = $("dailyPL");
-    const openTrades = $("openTrades");
-    const aiStatus = $("aiStatus");
-    const statusIndicator = $("statusIndicator");
-    const startBtn = $("startBtn");
-    const stopBtn = $("stopBtn");
+    if (!state.trade) {
 
-    if (price) {
-        price.textContent =
-            formatPrice(state.price);
+        return;
     }
 
-    if (balance) {
-        balance.textContent =
-            "$" + state.balance.toFixed(2);
+
+    const pl =
+        calculateTradePL();
+
+
+    state.equity =
+        state.balance + pl;
+
+
+    const tradePL =
+        $("tradePL");
+
+
+    if (tradePL) {
+
+        tradePL.textContent =
+            (
+                pl >= 0
+                    ? "+"
+                    : ""
+            ) +
+            "$" +
+            pl.toFixed(2);
     }
 
-    if (equity) {
-        equity.textContent =
-            "$" + state.equity.toFixed(2);
+
+    updateAccountDisplay();
+
+}
+
+
+// ==========================================
+// ACCOUNT DISPLAY
+// ==========================================
+
+function updateAccountDisplay() {
+
+    if ($("balance")) {
+
+        $("balance").textContent =
+            "$" +
+            state.balance.toFixed(2);
     }
 
-    if (dailyPL) {
-        dailyPL.textContent =
-            "$" + state.dailyPL.toFixed(2);
+
+    if ($("equity")) {
+
+        $("equity").textContent =
+            "$" +
+            state.equity.toFixed(2);
     }
 
-    if (openTrades) {
-        openTrades.textContent =
-            state.trade ? "1" : "0";
+
+    if ($("dailyPL")) {
+
+        $("dailyPL").textContent =
+            "$" +
+            state.dailyPL.toFixed(2);
     }
+
+
+    if ($("openTrades")) {
+
+        $("openTrades").textContent =
+            state.trade
+                ? "1"
+                : "0";
+    }
+
+}
+
+
+// ==========================================
+// AI DISPLAY
+// ==========================================
+
+function updateAIStatus() {
+
+    const aiStatus =
+        $("aiStatus");
+
+    const indicator =
+        $("statusIndicator");
+
+    const startBtn =
+        $("startBtn");
+
+    const stopBtn =
+        $("stopBtn");
+
 
     if (aiStatus) {
+
         aiStatus.textContent =
             state.running
                 ? "RUNNING"
                 : "STOPPED";
     }
 
-    if (statusIndicator) {
-        statusIndicator.className =
+
+    if (indicator) {
+
+        indicator.className =
             state.running
                 ? "status-indicator running"
                 : "status-indicator stopped";
     }
 
+
     if (startBtn) {
+
         startBtn.disabled =
             state.running;
     }
 
+
     if (stopBtn) {
+
         stopBtn.disabled =
             !state.running;
     }
 
-
-    // ============================
-    // OPEN TRADE
-    // ============================
-
-    const noTrade = $("noTrade");
-    const tradeDetails = $("tradeDetails");
-    const closeTradeBtn = $("closeTradeBtn");
-    const tradeStatus = $("tradeStatus");
-
-    if (state.trade) {
-
-        if (noTrade) {
-            noTrade.classList.add("hidden");
-        }
-
-        if (tradeDetails) {
-            tradeDetails.classList.remove("hidden");
-        }
-
-        if (closeTradeBtn) {
-            closeTradeBtn.classList.remove("hidden");
-        }
-
-        if ($("tradeType")) {
-            $("tradeType").textContent =
-                state.trade.type;
-        }
-
-        if ($("entryPrice")) {
-            $("entryPrice").textContent =
-                formatPrice(state.trade.entry);
-        }
-
-        if ($("lotSize")) {
-            $("lotSize").textContent =
-                state.trade.lot.toFixed(2);
-        }
-
-        const pl =
-            calculateTradePL();
-
-        if ($("tradePL")) {
-            $("tradePL").textContent =
-                (pl >= 0 ? "+" : "") +
-                "$" +
-                pl.toFixed(2);
-        }
-
-        if (tradeStatus) {
-
-            tradeStatus.textContent =
-                state.trade.type;
-
-            tradeStatus.className =
-                "badge " +
-                state.trade.type.toLowerCase();
-        }
-
-    } else {
-
-        if (noTrade) {
-            noTrade.classList.remove("hidden");
-        }
-
-        if (tradeDetails) {
-            tradeDetails.classList.add("hidden");
-        }
-
-        if (closeTradeBtn) {
-            closeTradeBtn.classList.add("hidden");
-        }
-
-        if (tradeStatus) {
-
-            tradeStatus.textContent =
-                "NO TRADE";
-
-            tradeStatus.className =
-                "badge neutral";
-        }
-    }
 }
 
 
-// ================================
+// ==========================================
 // ADD LOG
-// ================================
+// ==========================================
 
-function addLog(source, action, reason) {
+function addLog(
+    source,
+    action,
+    reason
+) {
 
-    const logs = $("logs");
+    const logs =
+        $("logs");
+
 
     if (!logs) {
+
         return;
     }
 
+
     const empty =
-        logs.querySelector(".empty-log");
+        logs.querySelector(
+            ".empty-log"
+        );
+
 
     if (empty) {
+
         empty.remove();
     }
 
-    const item =
-        document.createElement("div");
 
-    item.className = "log";
+    const item =
+        document.createElement(
+            "div"
+        );
+
+
+    item.className =
+        "log";
+
 
     item.innerHTML = `
+
         <div class="log-time">
-            ${new Date().toLocaleTimeString()}
+
+            ${new Date()
+                .toLocaleTimeString()}
+
         </div>
+
 
         <div class="log-action">
+
             ${source} • ${action}
+
         </div>
+
 
         <div class="log-reason">
+
             ${reason}
+
         </div>
+
     `;
 
+
     logs.prepend(item);
+
 }
 
 
-// ================================
+// ==========================================
 // START AI
-// ================================
+// ==========================================
 
 function startAI() {
 
     if (state.running) {
+
         return;
     }
 
-    state.running = true;
 
-    const connectionText =
-        $("connectionText");
+    state.running =
+        true;
 
-    if (connectionText) {
-        connectionText.textContent =
-            "AI Demo Running";
+
+    if ($("reason")) {
+
+        $("reason").textContent =
+            "AI is running. " +
+            "Waiting for market data.";
     }
+
 
     addLog(
         "SYSTEM",
         "AI STARTED",
-        "AI trading simulation has started."
+        "AI monitoring started."
     );
 
-    updateDisplay();
+
+    updateAIStatus();
+
+
+    fetchMarketData();
+
 
     state.timer =
         setInterval(
-            simulateAI,
-            3000
+            fetchMarketData,
+            MARKET_REFRESH_MS
         );
+
 }
 
 
-// ================================
+// ==========================================
 // STOP AI
-// ================================
+// ==========================================
 
 function stopAI() {
 
-    if (!state.running) {
-        return;
-    }
+    state.running =
+        false;
 
-    state.running = false;
 
     if (state.timer) {
 
@@ -304,278 +683,52 @@ function stopAI() {
             state.timer
         );
 
-        state.timer = null;
+        state.timer =
+            null;
     }
 
-    const connectionText =
-        $("connectionText");
 
-    if (connectionText) {
-        connectionText.textContent =
-            "Demo Mode";
+    if ($("reason")) {
+
+        $("reason").textContent =
+            "AI trader is currently stopped.";
     }
+
 
     addLog(
         "SYSTEM",
         "AI STOPPED",
-        "AI trading simulation has stopped."
+        "AI monitoring stopped."
     );
 
-    updateDisplay();
+
+    updateAIStatus();
+
 }
 
 
-// ================================
-// SIMULATE MARKET
-// ================================
-
-function simulateMarket() {
-
-    const movement =
-        (Math.random() - 0.5)
-        * 0.0008;
-
-    state.price += movement;
-
-    if (state.price < 1.09500) {
-        state.price = 1.09500;
-    }
-
-    if (state.price > 1.10500) {
-        state.price = 1.10500;
-    }
-}
-
-
-// ================================
-// UPDATE AI ANALYSIS
-// ================================
-
-function updateAnalysis(decision) {
-
-    if (decision === "BUY") {
-
-        if ($("trend"))
-            $("trend").textContent = "Bullish";
-
-        if ($("momentum"))
-            $("momentum").textContent = "Positive";
-
-        if ($("volatility"))
-            $("volatility").textContent = "Normal";
-
-        if ($("bias"))
-            $("bias").textContent = "Bullish";
-
-    }
-
-    else if (decision === "SELL") {
-
-        if ($("trend"))
-            $("trend").textContent = "Bearish";
-
-        if ($("momentum"))
-            $("momentum").textContent = "Negative";
-
-        if ($("volatility"))
-            $("volatility").textContent = "Normal";
-
-        if ($("bias"))
-            $("bias").textContent = "Bearish";
-
-    }
-
-    else {
-
-        if ($("trend"))
-            $("trend").textContent = "Neutral";
-
-        if ($("momentum"))
-            $("momentum").textContent = "Neutral";
-
-        if ($("volatility"))
-            $("volatility").textContent = "Normal";
-
-        if ($("bias"))
-            $("bias").textContent = "Neutral";
-    }
-}
-
-
-// ================================
-// SIMULATE AI
-// ================================
-
-function simulateAI() {
-
-    simulateMarket();
-
-
-    // ----------------------------
-    // EXISTING TRADE
-    // ----------------------------
-
-    if (state.trade) {
-
-        const pl =
-            calculateTradePL();
-
-        state.equity =
-            state.balance + pl;
-
-
-        if ($("reason")) {
-
-            $("reason").textContent =
-                "AI is monitoring the open EUR/USD position.";
-        }
-
-
-        if ($("decision")) {
-            $("decision").textContent =
-                "HOLD";
-        }
-
-
-        if ($("confidence")) {
-
-            $("confidence").textContent =
-                (
-                    70 +
-                    Math.floor(
-                        Math.random() * 25
-                    )
-                ) + "%";
-        }
-
-
-        // Sometimes AI closes demo trade
-        if (Math.random() < 0.12) {
-
-            closeTrade(
-                "AI decided market conditions changed."
-            );
-        }
-
-    }
-
-    // ----------------------------
-    // NEW TRADE
-    // ----------------------------
-
-    else {
-
-        const random =
-            Math.random();
-
-        let decision =
-            "WAIT";
-
-        let confidence =
-            55;
-
-        let reason =
-            "Market conditions are not strong enough for a trade.";
-
-
-        if (
-            random > 0.70 &&
-            random < 0.85
-        ) {
-
-            decision =
-                "BUY";
-
-            confidence =
-                70 +
-                Math.floor(
-                    Math.random() * 25
-                );
-
-            reason =
-                "Demo AI detected a simulated bullish setup.";
-        }
-
-
-        if (random >= 0.85) {
-
-            decision =
-                "SELL";
-
-            confidence =
-                70 +
-                Math.floor(
-                    Math.random() * 25
-                );
-
-            reason =
-                "Demo AI detected a simulated bearish setup.";
-        }
-
-
-        if ($("decision")) {
-            $("decision").textContent =
-                decision;
-        }
-
-        if ($("confidence")) {
-            $("confidence").textContent =
-                confidence + "%";
-        }
-
-        if ($("reason")) {
-            $("reason").textContent =
-                reason;
-        }
-
-
-        updateAnalysis(
-            decision
-        );
-
-
-        if (
-            decision === "BUY" ||
-            decision === "SELL"
-        ) {
-
-            openTrade(
-                decision
-            );
-
-        } else {
-
-            addLog(
-                "AI",
-                decision,
-                reason
-            );
-        }
-    }
-
-
-    updateDisplay();
-}
-
-
-// ================================
-// OPEN TRADE
-// ================================
-
-function openTrade(type) {
-
-    const maxTrades =
-        Number(
-            $("maxTrades")
-                ? $("maxTrades").value
-                : 1
-        );
-
+// ==========================================
+// OPEN DEMO TRADE
+// ==========================================
+
+function openDemoTrade(type) {
 
     if (
-        state.trade ||
-        maxTrades < 1
+        !state.marketOnline ||
+        state.price === null
     ) {
+
+        addLog(
+            "AI",
+            "NO TRADE",
+            "Real market price is not available."
+        );
+
+        return;
+    }
+
+
+    if (state.trade) {
 
         return;
     }
@@ -603,28 +756,35 @@ function openTrade(type) {
         entry: state.price,
 
         lot: lot
+
     };
 
 
     addLog(
         "AI",
         type,
-        "Demo trade opened at " +
-        formatPrice(state.price) +
-        "."
+        "Demo position opened at " +
+        formatPrice(
+            state.price
+        )
     );
+
+
+    updateTradeDisplay();
+
 }
 
 
-// ================================
-// CLOSE TRADE
-// ================================
+// ==========================================
+// CLOSE DEMO TRADE
+// ==========================================
 
-function closeTrade(
-    reason = "Trade manually closed."
+function closeDemoTrade(
+    reason
 ) {
 
     if (!state.trade) {
+
         return;
     }
 
@@ -633,9 +793,13 @@ function closeTrade(
         calculateTradePL();
 
 
-    state.balance += pl;
+    state.balance +=
+        pl;
 
-    state.dailyPL += pl;
+
+    state.dailyPL +=
+        pl;
+
 
     state.equity =
         state.balance;
@@ -646,40 +810,154 @@ function closeTrade(
         "CLOSE",
         reason +
         " Result: " +
-        (pl >= 0 ? "+" : "") +
+        (
+            pl >= 0
+                ? "+"
+                : ""
+        ) +
         "$" +
         pl.toFixed(2)
     );
 
 
-    state.trade = null;
+    state.trade =
+        null;
 
 
     if ($("decision")) {
+
         $("decision").textContent =
             "WAIT";
     }
 
 
     if ($("confidence")) {
+
         $("confidence").textContent =
             "0%";
     }
 
 
-    if ($("reason")) {
-        $("reason").textContent =
-            "Position closed. Waiting for the next setup.";
-    }
+    updateTradeDisplay();
 
+    updateAccountDisplay();
 
-    updateDisplay();
 }
 
 
-// ================================
-// CONNECT BUTTONS
-// ================================
+// ==========================================
+// TRADE DISPLAY
+// ==========================================
+
+function updateTradeDisplay() {
+
+    const noTrade =
+        $("noTrade");
+
+    const details =
+        $("tradeDetails");
+
+    const closeButton =
+        $("closeTradeBtn");
+
+    const status =
+        $("tradeStatus");
+
+
+    if (!state.trade) {
+
+        if (noTrade)
+            noTrade.classList.remove(
+                "hidden"
+            );
+
+        if (details)
+            details.classList.add(
+                "hidden"
+            );
+
+        if (closeButton)
+            closeButton.classList.add(
+                "hidden"
+            );
+
+        if (status) {
+
+            status.textContent =
+                "NO TRADE";
+
+            status.className =
+                "badge neutral";
+        }
+
+        return;
+    }
+
+
+    if (noTrade)
+        noTrade.classList.add(
+            "hidden"
+        );
+
+
+    if (details)
+        details.classList.remove(
+            "hidden"
+        );
+
+
+    if (closeButton)
+        closeButton.classList.remove(
+            "hidden"
+        );
+
+
+    if ($("tradeType"))
+        $("tradeType").textContent =
+            state.trade.type;
+
+
+    if ($("entryPrice"))
+        $("entryPrice").textContent =
+            formatPrice(
+                state.trade.entry
+            );
+
+
+    if ($("lotSize"))
+        $("lotSize").textContent =
+            state.trade.lot.toFixed(2);
+
+
+    if ($("tradePL"))
+        $("tradePL").textContent =
+            (
+                calculateTradePL() >= 0
+                    ? "+"
+                    : ""
+            ) +
+            "$" +
+            calculateTradePL()
+                .toFixed(2);
+
+
+    if (status) {
+
+        status.textContent =
+            state.trade.type;
+
+        status.className =
+            "badge " +
+            state.trade.type
+                .toLowerCase();
+    }
+
+}
+
+
+// ==========================================
+// INITIALIZE
+// ==========================================
 
 document.addEventListener(
     "DOMContentLoaded",
@@ -688,11 +966,18 @@ document.addEventListener(
         const startBtn =
             $("startBtn");
 
+
         const stopBtn =
             $("stopBtn");
 
+
         const closeTradeBtn =
             $("closeTradeBtn");
+
+
+        const refreshBtn =
+            $("refreshMarketBtn");
+
 
         const clearLog =
             $("clearLog");
@@ -722,11 +1007,20 @@ document.addEventListener(
                 "click",
                 function () {
 
-                    closeTrade(
+                    closeDemoTrade(
                         "Trade manually closed."
                     );
 
                 }
+            );
+        }
+
+
+        if (refreshBtn) {
+
+            refreshBtn.addEventListener(
+                "click",
+                fetchMarketData
             );
         }
 
@@ -740,12 +1034,17 @@ document.addEventListener(
                     const logs =
                         $("logs");
 
+
                     if (logs) {
 
                         logs.innerHTML = `
+
                             <div class="log empty-log">
+
                                 No decisions yet.
+
                             </div>
+
                         `;
                     }
 
@@ -754,7 +1053,19 @@ document.addEventListener(
         }
 
 
-        updateDisplay();
+        updateAIStatus();
+
+        updateMarketDisplay();
+
+        updateTradeDisplay();
+
+        updateAccountDisplay();
+
+
+        setMarketStatus(
+            false,
+            "Backend not configured yet."
+        );
 
     }
 );
