@@ -14,8 +14,7 @@
 // https://ai-trader-backend-xxxx.onrender.com/api/market
 
 const MARKET_API_URL =
-    "https://YOUR-RENDER-URL.onrender.com/api/market";
-
+    "https://ai-trader-backend-pbfh.onrender.com/api/market";
 
 // Refresh every 15 seconds.
 
